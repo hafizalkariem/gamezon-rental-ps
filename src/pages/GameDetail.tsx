@@ -41,6 +41,7 @@ const GameDetail = () => {
       console.log("Current slug:", slug);
       console.log("API URL:", import.meta.env.VITE_API_URL);
       console.log("Full URL:", `${import.meta.env.VITE_API_URL}/games`);
+      console.log("Window location:", window.location.href);
 
       const response = await gameService.getAll();
       console.log("Raw API Response:", response);
@@ -193,6 +194,27 @@ const GameDetail = () => {
     });
   };
 
+  // Global error listener untuk menangkap semua 404 errors
+  useEffect(() => {
+    const handleError = (event) => {
+      if (event.target && event.target.tagName) {
+        console.error(`404 Error - Failed to load ${event.target.tagName}:`, {
+          src: event.target.src || event.target.href,
+          tagName: event.target.tagName,
+          className: event.target.className,
+          id: event.target.id,
+        });
+      }
+    };
+
+    // Listen for all resource loading errors
+    window.addEventListener("error", handleError, true);
+
+    return () => {
+      window.removeEventListener("error", handleError, true);
+    };
+  }, []);
+
   // useEffect harus dipanggil setelah semua function didefinisikan
   useEffect(() => {
     fetchGame();
@@ -255,6 +277,13 @@ const GameDetail = () => {
                   src={game.image_url}
                   alt={game.title}
                   className="w-full h-full object-cover"
+                  onError={(e) => {
+                    console.error("Image failed to load:", game.image_url);
+                    e.target.style.display = "none";
+                  }}
+                  onLoad={() => {
+                    console.log("Image loaded successfully:", game.image_url);
+                  }}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
