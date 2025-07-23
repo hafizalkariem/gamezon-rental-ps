@@ -60,7 +60,25 @@ export const consoleService = {
 };
 
 export const gameService = {
-  getAll: (params?: any) => api.get("/games", { params }),
+  getAll: async (params?: any) => {
+    try {
+      console.log("Calling /games endpoint...");
+      const response = await api.get("/games", { params });
+      console.log("Games API success:", response);
+      return response;
+    } catch (error) {
+      console.error("Games API failed:", error);
+      // Log specific details for debugging
+      console.error("Request details:", {
+        url: error.config?.url,
+        baseURL: error.config?.baseURL,
+        fullURL: `${error.config?.baseURL}${error.config?.url}`,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+      });
+      throw error;
+    }
+  },
   getById: (id: string) => api.get(`/games/${id}`),
   create: (data: any) => api.post("/games", data),
   update: (id: string, data: any) => api.put(`/games/${id}`, data),
@@ -90,7 +108,7 @@ export const dashboardService = {
 };
 
 export const authService = {
-  register: (data: any) => api.post("/register", data),
+  register: (data: unknown) => api.post("/register", data),
   login: (data: unknown) => api.post("/login", data),
   logout: () => api.post("/logout"),
   me: () => api.get("/me"),

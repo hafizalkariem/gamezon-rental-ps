@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -23,38 +23,78 @@ const GameDetail = () => {
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(0);
 
-  useEffect(() => {
-    fetchGame();
-  }, [fetchGame, slug]);
-
   const createSlug = (title) => {
+    if (!title) return "";
     return title
       .toLowerCase()
+      .trim()
       .replace(/[^a-z0-9 -]/g, "")
       .replace(/\s+/g, "-")
-      .replace(/-+/g, "-");
+      .replace(/-+/g, "-")
+      .replace(/^-+|-+$/g, ""); // Remove leading/trailing dashes
   };
 
-  const fetchGame = async () => {
+  const fetchGame = useCallback(async () => {
     try {
       setLoading(true);
-      console.log("Fetching games for slug:", slug);
+      console.log("=== GameDetail Debug ===");
+      console.log("Current slug:", slug);
       console.log("API URL:", import.meta.env.VITE_API_URL);
+      console.log("Full URL:", `${import.meta.env.VITE_API_URL}/games`);
 
       const response = await gameService.getAll();
-      console.log("API Response:", response);
+      console.log("Raw API Response:", response);
+      console.log("Response type:", typeof response);
 
-      // Handle different response structures
-      const games = response?.data || response || [];
-      console.log("Games array:", games);
-
-      if (!Array.isArray(games)) {
-        console.error("Games data is not an array:", games);
+      // Handle different response structures more robustly
+      let games = [];
+      if (response?.data && Array.isArray(response.data)) {
+        games = response.data;
+        console.log("Using response.data format");
+      } else if (Array.isArray(response)) {
+        games = response;
+        console.log("Using direct array format");
+      } else {
+        console.error("Unexpected response structure:", response);
+        console.error("Available keys:", Object.keys(response || {}));
         return;
       }
 
-      const foundGame = games.find((g) => createSlug(g.title) === slug);
+      console.log("Games count:", games.length);
+      console.log("Sample games:", games.slice(0, 2));
+
+      // Debug slug matching
+      console.log("=== Slug Debug ===");
+      let foundGame = games.find((g) => createSlug(g.title) === slug);
+      console.log("Looking for slug:", slug);
       console.log("Found game:", foundGame);
+
+      // Fallback: try case-insensitive search
+      if (!foundGame) {
+        console.log("Trying case-insensitive fallback...");
+        foundGame = games.find(
+          (g) => createSlug(g.title).toLowerCase() === slug.toLowerCase()
+        );
+        console.log("Fallback result:", foundGame);
+      }
+
+      // Fallback: try partial match
+      if (!foundGame) {
+        console.log("Trying partial match fallback...");
+        foundGame = games.find(
+          (g) =>
+            createSlug(g.title).includes(slug) ||
+            slug.includes(createSlug(g.title))
+        );
+        console.log("Partial match result:", foundGame);
+      }
+
+      if (!foundGame) {
+        console.warn("Available games and their slugs:");
+        games.slice(0, 10).forEach((g) => {
+          console.log(`"${g.title}" -> "${createSlug(g.title)}"`);
+        });
+      }
 
       setGame(foundGame);
 
@@ -69,11 +109,33 @@ const GameDetail = () => {
         status: error.response?.status,
         statusText: error.response?.statusText,
         data: error.response?.data,
+        config: {
+          url: error.config?.url,
+          method: error.config?.method,
+          baseURL: error.config?.baseURL,
+          timeout: error.config?.timeout,
+        },
       });
+
+      // Specific error handling
+      if (error.code === "ERR_NETWORK" || error.response?.status === 0) {
+        console.error(
+          "🚨 NETWORK/CORS ERROR - Check backend CORS configuration!"
+        );
+        console.error(
+          "Make sure your Railway frontend domain is added to CORS allowed_origins"
+        );
+      } else if (error.code === "ECONNABORTED") {
+        console.error("⏰ TIMEOUT ERROR - Request took too long");
+      } else if (error.response?.status === 404) {
+        console.error("🔍 API ENDPOINT NOT FOUND - Check API URL");
+      } else if (error.response?.status >= 500) {
+        console.error("🔥 SERVER ERROR - Backend is having issues");
+      }
     } finally {
       setLoading(false);
     }
-  };
+  }, [slug]);
 
   const getRelatedGames = (currentGame, allGames) => {
     const otherGames = allGames.filter((g) => g.id !== currentGame.id);
@@ -130,6 +192,11 @@ const GameDetail = () => {
       day: "numeric",
     });
   };
+
+  // useEffect harus dipanggil setelah semua function didefinisikan
+  useEffect(() => {
+    fetchGame();
+  }, [fetchGame]); // fetchGame sudah di-memoize dengan useCallback
 
   if (loading) {
     return (
