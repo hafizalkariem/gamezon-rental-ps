@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import React, { useState, useEffect, useCallback } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Calendar,
@@ -19,6 +19,7 @@ import Toast from "../components/Toast";
 import ConfirmModal from "../components/ConfirmModal";
 
 const Events = () => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("upcoming");
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,17 +36,7 @@ const Events = () => {
     event: null as Event | null,
   });
 
-  useEffect(() => {
-    fetchEvents();
-
-    // Check user authentication
-    const userData = localStorage.getItem("user");
-    if (userData) {
-      setUser(JSON.parse(userData));
-    }
-  }, [fetchEvents]);
-
-  const fetchEvents = async () => {
+  const fetchEvents = useCallback(async () => {
     try {
       setLoading(true);
       const response: ApiResponse<Event[]> = await eventService.getAll();
@@ -61,7 +52,17 @@ const Events = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchEvents();
+
+    // Check user authentication
+    const userData = localStorage.getItem("user");
+    if (userData) {
+      setUser(JSON.parse(userData));
+    }
+  }, [fetchEvents]);
 
   const getEventIcon = (title: string) => {
     const icons: { [key: string]: string } = {
@@ -152,7 +153,7 @@ const Events = () => {
     // Check if user is logged in
     if (!user) {
       showToast("Please login first to register for events", "warning");
-      setTimeout(() => (window.location.href = "/login"), 1500);
+      setTimeout(() => navigate("/login"), 1500);
       return;
     }
 
@@ -179,26 +180,55 @@ const Events = () => {
 
     try {
       const token = localStorage.getItem("auth_token");
+      const userData = localStorage.getItem("user");
+
+      console.log("🔍 Auth Debug Info:");
+      console.log("- Token exists:", !!token);
+      console.log(
+        "- Token preview:",
+        token ? `${token.substring(0, 20)}...` : "null"
+      );
+      console.log("- User data exists:", !!userData);
+      console.log("- User data:", userData ? JSON.parse(userData) : "null");
 
       if (!token) {
         showToast("Please login first", "warning");
-        setTimeout(() => (window.location.href = "/login"), 1500);
+        setTimeout(() => navigate("/login"), 1500);
         return;
       }
 
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/events/${event.id}/register`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-        }
+      const apiUrl = `${import.meta.env.VITE_API_URL}events/${
+        event.id
+      }/register`;
+      console.log("🔍 Event Registration API URL:", apiUrl);
+      console.log("🔍 VITE_API_URL:", import.meta.env.VITE_API_URL);
+
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+      });
+
+      console.log("🔍 Response Status:", response.status);
+      console.log(
+        "🔍 Response Headers:",
+        Object.fromEntries(response.headers.entries())
       );
 
       const data = await response.json();
+      console.log("🔍 Response Data:", data);
+
+      if (response.status === 401) {
+        console.log("🚨 401 Unauthorized - Token might be expired");
+        showToast("Session expired. Please login again.", "warning");
+        localStorage.removeItem("auth_token");
+        localStorage.removeItem("user");
+        setTimeout(() => navigate("/login"), 1500);
+        return;
+      }
 
       if (data.success) {
         showToast(
